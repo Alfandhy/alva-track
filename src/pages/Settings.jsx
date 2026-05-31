@@ -2,9 +2,12 @@ import React, { useState, useEffect, useContext } from 'react';
 import { User, Moon, Sun, Trash2, Info, AlertTriangle } from 'lucide-react';
 import { getUser, saveUser, resetAllData, getHabits, getCompletions } from '../services/habitService';
 import { ThemeContext } from '../App';
+import { useAuth } from '../contexts/AuthContext';
+import { LogOut } from 'lucide-react';
 
 export default function Settings() {
   const { theme, setTheme } = useContext(ThemeContext);
+  const { logout } = useAuth();
   const [user, setUser]         = useState({ name: '' });
   const [nameInput, setNameInput] = useState('');
   const [nameSaved, setNameSaved] = useState(false);
@@ -12,31 +15,36 @@ export default function Settings() {
   const [stats, setStats]       = useState({ habits: 0, completions: 0 });
 
   useEffect(() => {
-    const u = getUser();
-    setUser(u);
-    setNameInput(u.name || '');
-    setStats({
-      habits:      getHabits().length,
-      completions: getCompletions().filter(c => c.completed).length,
-    });
+    const loadData = async () => {
+      const u = await getUser();
+      setUser(u);
+      setNameInput(u.name || '');
+      
+      const [h, c] = await Promise.all([getHabits(), getCompletions()]);
+      setStats({
+        habits: h.length,
+        completions: c.filter(comp => comp.completed).length,
+      });
+    };
+    loadData();
   }, []);
 
-  const handleSaveName = () => {
+  const handleSaveName = async () => {
     const name = nameInput.trim() || 'Alva';
-    saveUser({ name });
+    await saveUser({ name });
     setUser(prev => ({ ...prev, name }));
     setNameSaved(true);
     setTimeout(() => setNameSaved(false), 2000);
   };
 
-  const handleToggleTheme = () => {
+  const handleToggleTheme = async () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(newTheme);
-    saveUser({ theme: newTheme });
+    await saveUser({ theme: newTheme });
   };
 
-  const handleReset = () => {
-    resetAllData();
+  const handleReset = async () => {
+    await resetAllData();
     setStats({ habits: 0, completions: 0 });
     setShowResetConfirm(false);
   };
@@ -209,10 +217,25 @@ export default function Settings() {
 
         <div style={{ paddingTop: '12px' }}>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            Alva Track membantu kamu membangun kebiasaan positif secara konsisten. Data disimpan lokal di browser menggunakan localStorage.
+            Alva Track membantu kamu membangun kebiasaan positif secara konsisten. Data tersinkronisasi secara otomatis menggunakan Firebase Cloud Storage.
           </p>
         </div>
       </div>
+      
+      {/* Logout */}
+      <button
+        onClick={logout}
+        className="btn btn-secondary"
+        style={{
+          width: '100%', padding: '16px', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', gap: '10px', marginTop: '24px',
+          color: 'var(--danger)', border: '1px solid var(--danger-border)',
+          background: 'var(--danger-bg)'
+        }}
+      >
+        <LogOut size={18} strokeWidth={2} />
+        <span style={{ fontWeight: 600 }}>Keluar Akun (Logout)</span>
+      </button>
 
       {/* Reset Modal */}
       {showResetConfirm && (

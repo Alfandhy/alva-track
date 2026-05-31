@@ -11,10 +11,15 @@ export default function Dashboard() {
 
   const today = getTodayStr();
 
-  const loadData = () => {
-    setHabits(getHabits().filter(h => h.isActive));
-    setCompletions(getCompletions());
-    setUser(getUser());
+  const loadData = async () => {
+    const [h, c, u] = await Promise.all([
+      getHabits(),
+      getCompletions(),
+      getUser()
+    ]);
+    setHabits(h.filter(habit => habit.isActive));
+    setCompletions(c);
+    setUser(u);
   };
 
   useEffect(() => {
@@ -23,9 +28,20 @@ export default function Dashboard() {
     return () => window.removeEventListener('focus', loadData);
   }, []);
 
-  const handleToggle = (habitId) => {
-    toggleCompletion(habitId, today);
-    setCompletions(getCompletions());
+  const handleToggle = async (habitId) => {
+    // Optimistic UI update
+    setCompletions(prev => {
+      const exists = prev.find(c => c.habitId === habitId && c.date === today);
+      if (exists) {
+        return prev.map(c => c === exists ? { ...c, completed: !c.completed } : c);
+      }
+      return [...prev, { habitId, date: today, completed: true }];
+    });
+    
+    // Background sync
+    await toggleCompletion(habitId, today);
+    const newCompletions = await getCompletions();
+    setCompletions(newCompletions);
   };
 
   const isCompleted = (habitId) =>

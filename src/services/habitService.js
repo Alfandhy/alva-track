@@ -1,131 +1,154 @@
-// ============================================================
-// habitService.js — LocalStorage CRUD for habits & completions
-// ============================================================
+import { db, auth } from './firebase';
+import { collection, doc, getDocs, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 
-const HABITS_KEY = 'alva_track_habits';
-const COMPLETIONS_KEY = 'alva_track_completions';
-const USER_KEY = 'alva_track_user';
+// Helper untuk mendapatkan references
+const getRefs = () => {
+  const userId = auth.currentUser?.uid;
+  if (!userId) throw new Error("User not logged in");
+  
+  return {
+    userRef: doc(db, 'users', userId),
+    habitsRef: collection(db, 'users', userId, 'habits'),
+    completionsRef: collection(db, 'users', userId, 'completions')
+  };
+};
 
 // ─── Habits ─────────────────────────────────────────────────
 
-export function getHabits() {
+export async function getHabits() {
   try {
-    const data = localStorage.getItem(HABITS_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
+    const { habitsRef } = getRefs();
+    const snapshot = await getDocs(habitsRef);
+    return snapshot.docs.map(doc => doc.data());
+  } catch (err) {
+    console.error(err);
     return [];
   }
 }
 
-export function saveHabits(habits) {
-  localStorage.setItem(HABITS_KEY, JSON.stringify(habits));
-}
-
-export function addHabit(habit) {
-  const habits = getHabits();
+export async function addHabit(habit) {
+  const { habitsRef } = getRefs();
+  const newId = `habit_${Date.now()}`;
   const newHabit = {
-    id: `habit_${Date.now()}`,
+    id: newId,
     name: habit.name,
     description: habit.description || '',
-    color: habit.color || '#7c3aed',
+    color: habit.color || '#B6FF00',
     createdAt: new Date().toISOString().split('T')[0],
     isActive: true,
   };
-  habits.push(newHabit);
-  saveHabits(habits);
+  
+  await setDoc(doc(habitsRef, newId), newHabit);
   return newHabit;
 }
 
-export function updateHabit(id, data) {
-  const habits = getHabits();
-  const idx = habits.findIndex(h => h.id === id);
-  if (idx !== -1) {
-    habits[idx] = { ...habits[idx], ...data };
-    saveHabits(habits);
-    return habits[idx];
+export async function updateHabit(id, data) {
+  const { habitsRef } = getRefs();
+  const habitDoc = doc(habitsRef, id);
+  const snap = await getDoc(habitDoc);
+  if (snap.exists()) {
+    const updated = { ...snap.data(), ...data };
+    await setDoc(habitDoc, updated);
+    return updated;
   }
   return null;
 }
 
-export function deleteHabit(id) {
-  const habits = getHabits().filter(h => h.id !== id);
-  saveHabits(habits);
-  // Also remove all completions for this habit
-  const completions = getCompletions().filter(c => c.habitId !== id);
-  saveCompletions(completions);
+export async function deleteHabit(id) {
+  const { habitsRef, completionsRef } = getRefs();
+  
+  // Delete habit
+  await deleteDoc(doc(habitsRef, id));
+  
+  // Delete all completions for this habit
+  const compSnap = await getDocs(completionsRef);
+  const batch = writeBatch(db);
+  compSnap.docs.forEach(docSnap => {
+    if (docSnap.data().habitId === id) {
+      batch.delete(docSnap.ref);
+    }
+  });
+  await batch.commit();
 }
 
-export function toggleHabitActive(id) {
-  const habits = getHabits();
-  const idx = habits.findIndex(h => h.id === id);
-  if (idx !== -1) {
-    habits[idx].isActive = !habits[idx].isActive;
-    saveHabits(habits);
-    return habits[idx];
+export async function toggleHabitActive(id) {
+  const { habitsRef } = getRefs();
+  const habitDoc = doc(habitsRef, id);
+  const snap = await getDoc(habitDoc);
+  if (snap.exists()) {
+    const current = snap.data();
+    const updated = { ...current, isActive: !current.isActive };
+    await setDoc(habitDoc, updated);
+    return updated;
   }
   return null;
 }
 
 // ─── Completions ─────────────────────────────────────────────
 
-export function getCompletions() {
+export async function getCompletions() {
   try {
-    const data = localStorage.getItem(COMPLETIONS_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
+    const { completionsRef } = getRefs();
+    const snapshot = await getDocs(completionsRef);
+    return snapshot.docs.map(doc => doc.data());
+  } catch (err) {
+    console.error(err);
     return [];
   }
 }
 
-export function saveCompletions(completions) {
-  localStorage.setItem(COMPLETIONS_KEY, JSON.stringify(completions));
-}
-
-export function isCompleted(habitId, date) {
-  const completions = getCompletions();
-  return completions.some(c => c.habitId === habitId && c.date === date && c.completed);
-}
-
-export function toggleCompletion(habitId, date) {
-  const completions = getCompletions();
-  const existing = completions.find(c => c.habitId === habitId && c.date === date);
-
-  if (existing) {
-    // Toggle the existing completion
-    existing.completed = !existing.completed;
+export async function toggleCompletion(habitId, date) {
+  const { completionsRef } = getRefs();
+  const compId = `${habitId}_${date}`;
+  const compDoc = doc(completionsRef, compId);
+  
+  const snap = await getDoc(compDoc);
+  if (snap.exists()) {
+    const current = snap.data();
+    await setDoc(compDoc, { ...current, completed: !current.completed });
+    return !current.completed;
   } else {
-    // Create new completion
-    completions.push({
-      id: `comp_${Date.now()}`,
+    await setDoc(compDoc, {
+      id: compId,
       habitId,
       date,
-      completed: true,
+      completed: true
     });
+    return true;
   }
-
-  saveCompletions(completions);
-  return !existing ? true : existing.completed;
 }
 
 // ─── User ────────────────────────────────────────────────────
 
-export function getUser() {
+export async function getUser() {
   try {
-    const data = localStorage.getItem(USER_KEY);
-    return data ? JSON.parse(data) : { name: 'Alva', theme: 'light' };
-  } catch {
-    return { name: 'Alva', theme: 'light' };
+    const { userRef } = getRefs();
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    // Return default if not exists
+    return { name: auth.currentUser?.displayName || 'Alva', theme: 'dark' };
+  } catch (err) {
+    return { name: 'Alva', theme: 'dark' };
   }
 }
 
-export function saveUser(userData) {
-  const current = getUser();
-  localStorage.setItem(USER_KEY, JSON.stringify({ ...current, ...userData }));
+export async function saveUser(userData) {
+  const { userRef } = getRefs();
+  const current = await getUser();
+  await setDoc(userRef, { ...current, ...userData });
 }
 
-// ─── Reset ───────────────────────────────────────────────────
-
-export function resetAllData() {
-  localStorage.removeItem(HABITS_KEY);
-  localStorage.removeItem(COMPLETIONS_KEY);
+export async function resetAllData() {
+  const { habitsRef, completionsRef } = getRefs();
+  const batch = writeBatch(db);
+  
+  const habitsSnap = await getDocs(habitsRef);
+  habitsSnap.docs.forEach(d => batch.delete(d.ref));
+  
+  const compSnap = await getDocs(completionsRef);
+  compSnap.docs.forEach(d => batch.delete(d.ref));
+  
+  await batch.commit();
 }

@@ -37,8 +37,12 @@ export default function Statistics() {
   const [completions, setCompletions] = useState([]);
 
   useEffect(() => {
-    setHabits(getHabits().filter(h => h.isActive));
-    setCompletions(getCompletions());
+    const loadData = async () => {
+      const [h, c] = await Promise.all([getHabits(), getCompletions()]);
+      setHabits(h.filter(habit => habit.isActive));
+      setCompletions(c);
+    };
+    loadData();
   }, []);
 
   const last7     = getLast7Days();

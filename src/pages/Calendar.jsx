@@ -13,11 +13,14 @@ export default function Calendar() {
   const [showSelector, setShowSelector]     = useState(false);
 
   useEffect(() => {
-    const h = getHabits().filter(h => h.isActive);
-    const c = getCompletions();
-    setHabits(h);
-    setCompletions(c);
-    if (h.length > 0) setSelectedHabitId(h[0].id);
+    const loadData = async () => {
+      const [h, c] = await Promise.all([getHabits(), getCompletions()]);
+      const activeHabits = h.filter(habit => habit.isActive);
+      setHabits(activeHabits);
+      setCompletions(c);
+      if (activeHabits.length > 0) setSelectedHabitId(activeHabits[0].id);
+    };
+    loadData();
   }, []);
 
   const selectedHabit = habits.find(h => h.id === selectedHabitId);

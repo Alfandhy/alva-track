@@ -14,17 +14,18 @@ export default function Habits() {
   const [editingHabit, setEditingHabit] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  const loadData = () => {
-    setHabits(getHabits());
-    setCompletions(getCompletions());
+  const loadData = async () => {
+    const [h, c] = await Promise.all([getHabits(), getCompletions()]);
+    setHabits(h);
+    setCompletions(c);
   };
 
   useEffect(() => { loadData(); }, []);
 
-  const handleSave = (formData) => {
-    if (editingHabit) updateHabit(editingHabit.id, formData);
-    else addHabit(formData);
-    loadData();
+  const handleSave = async (formData) => {
+    if (editingHabit) await updateHabit(editingHabit.id, formData);
+    else await addHabit(formData);
+    await loadData();
     setShowForm(false);
     setEditingHabit(null);
   };
@@ -35,11 +36,12 @@ export default function Habits() {
   };
 
   const handleDelete    = (id) => setDeleteConfirm(id);
-  const confirmDelete   = () => { deleteHabit(deleteConfirm); setDeleteConfirm(null); loadData(); };
+  const confirmDelete   = async () => { await deleteHabit(deleteConfirm); setDeleteConfirm(null); await loadData(); };
 
-  const handleToggle = (habitId, date) => {
-    toggleCompletion(habitId, date);
-    setCompletions(getCompletions());
+  const handleToggle = async (habitId, date) => {
+    await toggleCompletion(habitId, date);
+    const newCompletions = await getCompletions();
+    setCompletions(newCompletions);
   };
 
   const activeHabits   = habits.filter(h => h.isActive);
